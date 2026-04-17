@@ -93,9 +93,9 @@ public class NotificationListener extends NotificationListenerService {
 
     private void sendWebhook(String packageName, String title, String text) {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        String bindCode = prefs.getString(BIND_CODE_KEY, "");
-        String secretKey = prefs.getString(SECRET_KEY_KEY, "");
-        String deviceId = prefs.getString(DEVICE_ID_KEY, "");
+        final String bindCode = prefs.getString(BIND_CODE_KEY, "");
+        final String secretKey = prefs.getString(SECRET_KEY_KEY, "");
+        final String deviceId = prefs.getString(DEVICE_ID_KEY, "");
 
         if (bindCode.isEmpty() || secretKey.isEmpty()) {
             Log.e(TAG, "bind_code or secret_key not configured");
@@ -103,25 +103,31 @@ public class NotificationListener extends NotificationListenerService {
         }
 
         // 如果没有缓存的 webhook_url，先获取配置
-        if (cachedWebhookUrl.isEmpty()) {
+        if (cachedWebhookUrl == null || cachedWebhookUrl.isEmpty()) {
             Log.d(TAG, "No cached webhook_url, fetching config first...");
             fetchConfigAndSend(packageName, title, text, bindCode, secretKey, deviceId);
             return;
         }
 
         // 生成签名
-        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
-        String sign = generateSign(bindCode, deviceId, secretKey, timestamp);
+        final String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+        final String sign = generateSign(bindCode, deviceId, secretKey, timestamp);
 
-        // 构造 JSON
+        // 构造 JSON - 使用 URLEncoder 处理特殊字符
+        String encodedBindCode = android.util.Base64.encodeToString(bindCode.getBytes(), android.util.Base64.NO_WRAP);
+        String encodedDeviceId = android.util.Base64.encodeToString(deviceId.getBytes(), android.util.Base64.NO_WRAP);
+        String encodedPackage = android.util.Base64.encodeToString(packageName.getBytes(), android.util.Base64.NO_WRAP);
+        String encodedTitle = android.util.Base64.encodeToString((title != null ? title : "").getBytes(), android.util.Base64.NO_WRAP);
+        String encodedText = android.util.Base64.encodeToString((text != null ? text : "").getBytes(), android.util.Base64.NO_WRAP);
+
         String jsonPayload = "{" +
-            "\"bind_code\":\"" + bindCode + "\"," +
-            "\"device_id\":\"" + deviceId + "\"," +
+            "\"bind_code\":\"" + escapeJson(bindCode) + "\"," +
+            "\"device_id\":\"" + escapeJson(deviceId) + "\"," +
             "\"timestamp\":\"" + timestamp + "\"," +
             "\"sign\":\"" + sign + "\"," +
-            "\"package\":\"" + packageName + "\"," +
-            "\"title\":\"" + (title != null ? title : "") + "\"," +
-            "\"text\":\"" + (text != null ? text : "") + "\"" +
+            "\"package\":\"" + escapeJson(packageName) + "\"," +
+            "\"title\":\"" + escapeJson(title != null ? title : "") + "\"," +
+            "\"text\":\"" + escapeJson(text != null ? text : "") + "\"" +
             "}";
 
         Log.d(TAG, "Sending webhook to: " + cachedWebhookUrl);
@@ -143,13 +149,24 @@ public class NotificationListener extends NotificationListenerService {
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
+                String respBody = response.body().string();
+                Log.d(TAG, "Webhook response: " + response.code() + " - " + respBody);
                 if (response.isSuccessful()) {
                     Log.d(TAG, "Webhook sent successfully");
                 } else {
-                    Log.e(TAG, "Webhook send failed: " + response.code() + " - " + response.message());
+                    Log.e(TAG, "Webhook send failed: " + response.code());
                 }
             }
         });
+    }
+
+    private String escapeJson(String str) {
+        if (str == null) return "";
+        return str.replace("\\", "\\\\")
+                  .replace("\"", "\\\"")
+                  .replace("\n", "\\n")
+                  .replace("\r", "\\r")
+                  .replace("\t", "\\t");
     }
 
     private void fetchConfigAndSend(String packageName, String title, String text, String bindCode, String secretKey, String deviceId) {
