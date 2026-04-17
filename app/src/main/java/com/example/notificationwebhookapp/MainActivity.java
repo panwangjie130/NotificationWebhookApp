@@ -73,6 +73,7 @@ public class MainActivity extends AppCompatActivity {
     // 动态获取的 webhook URL
     private String fetchedWebhookUrl = null;
     private String secretKey = null;
+    private boolean isFetchingConfig = false;
     private String deviceId = null;
 
     @Override
@@ -187,7 +188,9 @@ public class MainActivity extends AppCompatActivity {
 
             if (fetchedWebhookUrl == null || fetchedWebhookUrl.isEmpty()) {
                 Log.e(TAG, "Webhook URL not available, fetching config...");
-                fetchConfig();
+                if (!isFetchingConfig) {
+                    fetchConfig();
+                }
                 return;
             }
 
@@ -311,6 +314,12 @@ public class MainActivity extends AppCompatActivity {
      * 从服务器获取配置
      */
     private void fetchConfig() {
+        // 防止重复请求
+        if (isFetchingConfig) {
+            Log.d(TAG, "Config fetch already in progress, skipping");
+            return;
+        }
+
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         String bindCode = prefs.getString(BIND_CODE_KEY, "");
 
@@ -330,14 +339,17 @@ public class MainActivity extends AppCompatActivity {
                 .post(body)
                 .build();
 
+        isFetchingConfig = true;
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e(TAG, "Failed to fetch config", e);
+                isFetchingConfig = false;
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
+                isFetchingConfig = false;
                 if (response.isSuccessful()) {
                     String json = response.body().string();
                     Log.d(TAG, "Config response: " + json);
