@@ -165,9 +165,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         handleIntent(getIntent());
-        // 每次恢复时重新获取配置
-        fetchConfig();
-        // 注意：不再自动检查通知权限，避免每次返回都弹出提示
+        // handleIntent 已经会在需要时调用 fetchConfig，不需要重复调用
     }
 
     private void handleIntent(Intent intent) {
