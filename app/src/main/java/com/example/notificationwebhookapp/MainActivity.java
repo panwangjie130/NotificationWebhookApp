@@ -87,7 +87,7 @@ public class MainActivity extends AppCompatActivity {
         appList.setAdapter(adapter);
 
         // 生成或获取设备ID
-        deviceId = getDeviceId();
+        deviceId = getAppDeviceId();
 
         // 设置按钮
         Button settingsButton = findViewById(R.id.settingsButton);
@@ -145,7 +145,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 获取或生成设备ID
      */
-    private String getDeviceId() {
+    private String getAppDeviceId() {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         String savedDeviceId = prefs.getString(DEVICE_ID_KEY, "");
         if (savedDeviceId.isEmpty()) {
