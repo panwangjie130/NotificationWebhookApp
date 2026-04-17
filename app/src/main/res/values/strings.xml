@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">NotificationWebhookApp</string>
-    <string name="channel_name">Webhook Notifications</string>
-    <string name="channel_description">This is a notification channel for important updates.</string>
+    <string name="app_name">晨星收款监听</string>
+    <string name="channel_name">收款通知</string>
+    <string name="channel_description">用于转发支付宝/微信收款通知</string>
 </resources>

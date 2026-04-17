@@ -3,11 +3,9 @@ package com.example.notificationwebhookapp
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
-import android.view.MenuItem
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class SettingsActivity : AppCompatActivity() {
@@ -17,10 +15,6 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
-
-        // 启用 ActionBar 返回按钮
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "设置"
 
         sharedPreferences = getSharedPreferences("NotificationWebhookPrefs", Context.MODE_PRIVATE)
 
@@ -40,7 +34,7 @@ class SettingsActivity : AppCompatActivity() {
         if (bindCode.isNullOrEmpty()) {
             statusText.text = "状态：未配置"
         } else {
-            statusText.text = "状态：已配置 ($bindCode)"
+            statusText.text = "状态：已配置 (${bindCode})"
         }
 
         saveButton.setOnClickListener {
@@ -58,19 +52,7 @@ class SettingsActivity : AppCompatActivity() {
 
             // 保存绑定码
             sharedPreferences.edit().putString("bind_code", bindCode).apply()
-            statusText.text = "状态：已保存 ($bindCode)"
-            Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    // 处理返回按钮
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                finish()  // 关闭当前 Activity，返回上一个页面
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
+            statusText.text = "状态：已保存 (${bindCode})"
         }
     }
 }

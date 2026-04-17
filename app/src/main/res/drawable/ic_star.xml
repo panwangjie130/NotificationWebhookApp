@@ -4,11 +4,12 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 黄色星星前景 -->
+    <!-- 黄色星星图标 -->
     <path
         android:fillColor="#FFD700"
-        android:pathData="M54,24L63,45L86,48L67,64L72,87L54,75L36,87L41,64L22,48L45,45Z"/>
+        android:pathData="M54,20L62.5,42.5L88,45L68,60L74,86L54,72L34,86L40,60L20,45L45.5,42.5Z"/>
+    <!-- 内边框 -->
     <path
         android:fillColor="#FFA500"
-        android:pathData="M54,28L61,44L76,46L65,57L69,78L54,69L39,78L43,57L32,46L47,44Z"/>
+        android:pathData="M54,25L61,42L78,44L65,56L70,78L54,67L38,78L43,56L30,44L47,42Z"/>
 </vector>
