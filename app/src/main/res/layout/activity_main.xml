@@ -3,30 +3,78 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:gravity="center">
+    android:padding="16dp">
 
-    <Button
-        android:id="@+id/settingsButton"
-        android:layout_width="wrap_content"
+    <!-- 顶部按钮区域 -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Settings" />
+        android:orientation="horizontal"
+        android:gravity="center">
 
+        <Button
+            android:id="@+id/settingsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⚙️ 设置"
+            android:layout_marginRight="8dp" />
+
+        <Button
+            android:id="@+id/enableNotificationsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔔 通知权限"
+            android:layout_marginRight="8dp" />
+
+        <Button
+            android:id="@+id/testHeartbeatButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="❤️ 心跳测试" />
+
+    </LinearLayout>
+
+    <!-- 电池白名单按钮 -->
     <Button
-        android:id="@+id/enableNotificationsButton"
-        android:layout_width="wrap_content"
+        android:id="@+id/batteryWhitelistButton"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Enable Notifications" />
+        android:text="🔋 电池白名单（防止后台被杀）"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp" />
 
+    <!-- 状态显示 -->
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="状态：未连接"
+        android:textColor="#666666"
+        android:padding="8dp"
+        android:background="#EEEEEE" />
+
+    <!-- 应用列表标题 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="选择要监听的应用："
+        android:textStyle="bold"
+        android:paddingTop="8dp"
+        android:paddingBottom="4dp" />
+
+    <!-- 应用列表 -->
     <ListView
         android:id="@+id/appList"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
 
+    <!-- 保存按钮 -->
     <Button
         android:id="@+id/saveAppsButton"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Save Apps" />
+        android:text="💾 保存选中的应用"
+        android:layout_marginTop="8dp" />
 
 </LinearLayout>

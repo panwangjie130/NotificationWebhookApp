@@ -8,8 +8,11 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -21,12 +24,11 @@ import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
-import android.net.Uri;
+import android.widget.Toast;
 import android.content.ComponentName;
 import android.content.pm.PackageInfo;
 import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Drawable;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -40,7 +42,6 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.List;
-import android.provider.Settings;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -63,8 +64,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String CHANNEL_ID = "my_channel_id";
     private static final int NOTIFICATION_ID = 1;
 
-    // 固定配置接口地址（由服务端提供）
-    private static final String CONFIG_ENDPOINT = "https://your-domain.com/api/payment/app/config";
+    // 服务器配置接口地址（修改为你的服务器地址）
+    private static final String CONFIG_ENDPOINT = "http://43.133.87.195:9501/api/payment/app/config";
     // 动态获取的 webhook URL
     private String fetchedWebhookUrl = null;
     // 绑定码
@@ -80,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
         adapter = new AppListAdapter(this, installedApps);
         appList.setAdapter(adapter);
 
+        // 设置按钮
         Button settingsButton = findViewById(R.id.settingsButton);
         settingsButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -89,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // 保存应用按钮
         Button saveAppsButton = findViewById(R.id.saveAppsButton);
         saveAppsButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -97,6 +100,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // 启用通知监听按钮
         Button enableNotificationsButton = findViewById(R.id.enableNotificationsButton);
         enableNotificationsButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -104,6 +108,27 @@ public class MainActivity extends AppCompatActivity {
                 checkNotificationListenerEnabled();
             }
         });
+
+        // 心跳测试按钮
+        Button testHeartbeatButton = findViewById(R.id.testHeartbeatButton);
+        testHeartbeatButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                testHeartbeat();
+            }
+        });
+
+        // 电池白名单按钮
+        Button batteryWhitelistButton = findViewById(R.id.batteryWhitelistButton);
+        batteryWhitelistButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                requestBatteryWhitelist();
+            }
+        });
+
+        // 状态显示
+        TextView statusText = findViewById(R.id.statusText);
 
         loadSavedAppSelections();
         checkNotificationListenerEnabled();
@@ -144,7 +169,6 @@ public class MainActivity extends AppCompatActivity {
             // 检查是否获取到了 webhook URL
             if (fetchedWebhookUrl == null || fetchedWebhookUrl.isEmpty()) {
                 Log.e(TAG, "Webhook URL not available, fetching config...");
-                // 重新获取配置
                 fetchConfig();
                 return;
             }
@@ -152,6 +176,88 @@ public class MainActivity extends AppCompatActivity {
             // 构造 JSON payload
             String jsonPayload = "{\"bind_code\":\"" + bindCode + "\",\"title\":\"" + (title != null ? title : "") + "\",\"text\":\"" + (text != null ? text : "") + "\"}";
             sendWebhookMessage(jsonPayload);
+        }
+    }
+
+    /**
+     * 心跳测试 - 测试服务器连接
+     */
+    private void testHeartbeat() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String bindCode = prefs.getString(BIND_CODE_KEY, "");
+
+        if (bindCode.isEmpty()) {
+            Toast.makeText(this, "请先配置绑定码", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        OkHttpClient client = new OkHttpClient();
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+
+        String jsonBody = "{\"bind_code\":\"" + bindCode + "\"}";
+        RequestBody body = RequestBody.create(jsonBody, JSON);
+        Request request = new Request.Builder()
+                .url(CONFIG_ENDPOINT)
+                .post(body)
+                .build();
+
+        Toast.makeText(this, "正在测试连接...", Toast.LENGTH_SHORT).show();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this, "连接失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                });
+                Log.e(TAG, "Heartbeat failed", e);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                final String respBody = response.body().string();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (response.isSuccessful()) {
+                            // 解析返回的 webhook_url
+                            if (respBody.contains("\"status\":\"ok\"")) {
+                                Toast.makeText(MainActivity.this, "✅ 服务器连接成功！", Toast.LENGTH_SHORT).show();
+                            } else {
+                                Toast.makeText(MainActivity.this, "⚠️ 配置无效: " + respBody, Toast.LENGTH_LONG).show();
+                            }
+                        } else {
+                            Toast.makeText(MainActivity.this, "❌ 服务器返回错误: " + response.code(), Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+                Log.d(TAG, "Heartbeat response: " + respBody);
+            }
+        });
+    }
+
+    /**
+     * 请求电池白名单
+     */
+    private void requestBatteryWhitelist() {
+        try {
+            Intent intent = new Intent();
+            String packageName = getPackageName();
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm.isIgnoringBatteryOptimizations(packageName)) {
+                Toast.makeText(this, "已忽略电池优化", Toast.LENGTH_SHORT).show();
+            } else {
+                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(Uri.parse("package:" + packageName));
+                startActivity(intent);
+                Toast.makeText(this, "请在设置中开启电池白名单", Toast.LENGTH_LONG).show();
+            }
+        } catch (Exception e) {
+            // 某些设备可能不支持
+            Toast.makeText(this, "无法打开电池设置，请手动在系统设置中配置", Toast.LENGTH_LONG).show();
+            Log.e(TAG, "Battery whitelist error", e);
         }
     }
 
@@ -253,6 +359,8 @@ public class MainActivity extends AppCompatActivity {
         editor.apply();
         Log.d(TAG, "Selected apps saved: " + selectedAppsSet);
 
+        Toast.makeText(this, "已保存 " + selectedAppsSet.size() + " 个应用", Toast.LENGTH_SHORT).show();
+
         // 保存后重新获取配置
         fetchConfig();
     }
@@ -286,11 +394,13 @@ public class MainActivity extends AppCompatActivity {
     private void checkNotificationListenerEnabled() {
         if (!isNotificationServiceEnabled()) {
             Log.d(TAG, "Notification listener is not enabled. Prompting user to enable it.");
+            Toast.makeText(this, "请点击开启通知监听权限", Toast.LENGTH_SHORT).show();
             Intent intent = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
         } else {
             Log.d(TAG, "Notification listener is already enabled.");
+            Toast.makeText(this, "✅ 通知监听权限已开启", Toast.LENGTH_SHORT).show();
         }
     }
 
