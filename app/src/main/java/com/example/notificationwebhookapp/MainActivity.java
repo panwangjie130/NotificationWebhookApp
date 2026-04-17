@@ -136,7 +136,6 @@ public class MainActivity extends AppCompatActivity {
         });
 
         loadSavedAppSelections();
-        checkNotificationListenerEnabled();
 
         // 启动时获取配置
         fetchConfig();
@@ -168,6 +167,7 @@ public class MainActivity extends AppCompatActivity {
         handleIntent(getIntent());
         // 每次恢复时重新获取配置
         fetchConfig();
+        // 注意：不再自动检查通知权限，避免每次返回都弹出提示
     }
 
     private void handleIntent(Intent intent) {
