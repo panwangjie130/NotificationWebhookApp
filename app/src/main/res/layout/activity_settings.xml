@@ -40,6 +40,31 @@
         android:textColor="#888888" />
 
     <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="请输入机器人提供的密钥"
+        android:paddingBottom="8dp"
+        android:textColor="#666666" />
+
+    <EditText
+        android:id="@+id/secretKeyEditText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="64位密钥"
+        android:inputType="textPassword"
+        android:padding="12dp"
+        android:background="#EEEEEE" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="密钥用于验证请求安全性，请妥善保存"
+        android:paddingTop="8dp"
+        android:paddingBottom="16dp"
+        android:textSize="12sp"
+        android:textColor="#888888" />
+
+    <TextView
         android:id="@+id/statusText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

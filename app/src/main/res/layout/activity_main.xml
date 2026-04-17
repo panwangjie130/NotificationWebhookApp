@@ -48,7 +48,7 @@
         android:id="@+id/statusText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="状态：未连接"
+        android:text="点击「心跳测试」验证连接"
         android:textColor="#666666"
         android:padding="8dp"
         android:background="#EEEEEE" />

@@ -42,6 +42,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -57,19 +58,22 @@ public class MainActivity extends AppCompatActivity {
     private ListView appList;
     private List<AppInfo> installedApps;
     private AppListAdapter adapter;
+    private TextView statusText;
 
     private static final String PREFS_NAME = "NotificationWebhookPrefs";
     private static final String SELECTED_APPS_KEY = "SelectedApps";
     private static final String BIND_CODE_KEY = "bind_code";
+    private static final String SECRET_KEY_KEY = "secret_key";
+    private static final String DEVICE_ID_KEY = "device_id";
     private static final String CHANNEL_ID = "my_channel_id";
     private static final int NOTIFICATION_ID = 1;
 
-    // 服务器配置接口地址（修改为你的服务器地址）
+    // 服务器配置接口地址
     private static final String CONFIG_ENDPOINT = "http://43.133.87.195:9501/api/payment/app/config";
     // 动态获取的 webhook URL
     private String fetchedWebhookUrl = null;
-    // 绑定码
-    private String bindCode = null;
+    private String secretKey = null;
+    private String deviceId = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,9 +81,13 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         appList = (ListView) findViewById(R.id.appList);
+        statusText = (TextView) findViewById(R.id.statusText);
         installedApps = getInstalledApps();
         adapter = new AppListAdapter(this, installedApps);
         appList.setAdapter(adapter);
+
+        // 生成或获取设备ID
+        deviceId = getDeviceId();
 
         // 设置按钮
         Button settingsButton = findViewById(R.id.settingsButton);
@@ -127,14 +135,24 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 状态显示
-        TextView statusText = findViewById(R.id.statusText);
-
         loadSavedAppSelections();
         checkNotificationListenerEnabled();
 
         // 启动时获取配置
         fetchConfig();
+    }
+
+    /**
+     * 获取或生成设备ID
+     */
+    private String getDeviceId() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String savedDeviceId = prefs.getString(DEVICE_ID_KEY, "");
+        if (savedDeviceId.isEmpty()) {
+            savedDeviceId = UUID.randomUUID().toString();
+            prefs.edit().putString(DEVICE_ID_KEY, savedDeviceId).apply();
+        }
+        return savedDeviceId;
     }
 
     @Override
@@ -160,41 +178,73 @@ public class MainActivity extends AppCompatActivity {
             String packageName = intent.getStringExtra("package");
             Log.d(TAG, "Webhook details - Title: " + title + ", Text: " + text + ", Package: " + packageName);
 
-            // 检查是否配置了绑定码
-            if (bindCode == null || bindCode.isEmpty()) {
-                Log.e(TAG, "Bind code not configured");
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            String bindCode = prefs.getString(BIND_CODE_KEY, "");
+            secretKey = prefs.getString(SECRET_KEY_KEY, "");
+
+            if (bindCode.isEmpty() || secretKey.isEmpty()) {
+                Log.e(TAG, "Bind code or secret key not configured");
                 return;
             }
 
-            // 检查是否获取到了 webhook URL
             if (fetchedWebhookUrl == null || fetchedWebhookUrl.isEmpty()) {
                 Log.e(TAG, "Webhook URL not available, fetching config...");
                 fetchConfig();
                 return;
             }
 
-            // 构造 JSON payload
-            String jsonPayload = "{\"bind_code\":\"" + bindCode + "\",\"title\":\"" + (title != null ? title : "") + "\",\"text\":\"" + (text != null ? text : "") + "\"}";
+            // 构造 JSON payload（带签名）
+            String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+            String sign = generateSign(bindCode, secretKey, timestamp);
+            String jsonPayload = "{\"bind_code\":\"" + bindCode + "\",\"device_id\":\"" + deviceId + "\",\"timestamp\":\"" + timestamp + "\",\"sign\":\"" + sign + "\",\"title\":\"" + (title != null ? title : "") + "\",\"text\":\"" + (text != null ? text : "") + "\"}";
             sendWebhookMessage(jsonPayload);
         }
     }
 
     /**
-     * 心跳测试 - 测试服务器连接
+     * 生成签名
+     */
+    private String generateSign(String bindCode, String secretKey, String timestamp) {
+        // 签名格式: bind_code=device_id=timestamp 然后用 HMAC-SHA256
+        String data = "bind_code=" + bindCode + "&device_id=" + deviceId + "&timestamp=" + timestamp;
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            javax.crypto.spec.SecretKeySpec secretKeySpec = new javax.crypto.spec.SecretKeySpec(secretKey.getBytes(), "HmacSHA256");
+            mac.init(secretKeySpec);
+            byte[] hash = mac.doFinal(data.getBytes());
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "Sign generation failed", e);
+            return "";
+        }
+    }
+
+    /**
+     * 心跳测试
      */
     private void testHeartbeat() {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         String bindCode = prefs.getString(BIND_CODE_KEY, "");
+        secretKey = prefs.getString(SECRET_KEY_KEY, "");
 
-        if (bindCode.isEmpty()) {
-            Toast.makeText(this, "请先配置绑定码", Toast.LENGTH_SHORT).show();
+        if (bindCode.isEmpty() || secretKey.isEmpty()) {
+            Toast.makeText(this, "请先在设置中配置绑定码和密钥", Toast.LENGTH_SHORT).show();
             return;
         }
 
         OkHttpClient client = new OkHttpClient();
         MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-        String jsonBody = "{\"bind_code\":\"" + bindCode + "\"}";
+        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+        String sign = generateSign(bindCode, secretKey, timestamp);
+        String jsonBody = "{\"bind_code\":\"" + bindCode + "\",\"device_id\":\"" + deviceId + "\",\"timestamp\":\"" + timestamp + "\",\"sign\":\"" + sign + "\",\"action\":\"heartbeat\"}";
+
         RequestBody body = RequestBody.create(jsonBody, JSON);
         Request request = new Request.Builder()
                 .url(CONFIG_ENDPOINT)
@@ -222,8 +272,7 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void run() {
                         if (response.isSuccessful()) {
-                            // 解析返回的 webhook_url
-                            if (respBody.contains("\"status\":\"ok\"")) {
+                            if (respBody.contains("\"code\":200") || respBody.contains("\"heartbeat_ok\"")) {
                                 Toast.makeText(MainActivity.this, "✅ 服务器连接成功！", Toast.LENGTH_SHORT).show();
                             } else {
                                 Toast.makeText(MainActivity.this, "⚠️ 配置无效: " + respBody, Toast.LENGTH_LONG).show();
@@ -255,7 +304,6 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "请在设置中开启电池白名单", Toast.LENGTH_LONG).show();
             }
         } catch (Exception e) {
-            // 某些设备可能不支持
             Toast.makeText(this, "无法打开电池设置，请手动在系统设置中配置", Toast.LENGTH_LONG).show();
             Log.e(TAG, "Battery whitelist error", e);
         }
@@ -266,7 +314,7 @@ public class MainActivity extends AppCompatActivity {
      */
     private void fetchConfig() {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        bindCode = prefs.getString(BIND_CODE_KEY, "");
+        String bindCode = prefs.getString(BIND_CODE_KEY, "");
 
         if (bindCode.isEmpty()) {
             Log.w(TAG, "Bind code not configured, please enter in settings");
@@ -276,8 +324,8 @@ public class MainActivity extends AppCompatActivity {
         OkHttpClient client = new OkHttpClient();
         MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-        // 发送绑定码获取配置
-        String jsonBody = "{\"bind_code\":\"" + bindCode + "\"}";
+        // 发送 device_id 让服务器可以识别设备
+        String jsonBody = "{\"bind_code\":\"" + bindCode + "\",\"device_id\":\"" + deviceId + "\"}";
         RequestBody body = RequestBody.create(jsonBody, JSON);
         Request request = new Request.Builder()
                 .url(CONFIG_ENDPOINT)
@@ -296,8 +344,7 @@ public class MainActivity extends AppCompatActivity {
                     String json = response.body().string();
                     Log.d(TAG, "Config response: " + json);
                     try {
-                        // 简单解析 JSON
-                        // {"status":"ok","webhook_url":"https://...","enabled":true}
+                        // 解析 JSON 响应
                         if (json.contains("\"status\":\"ok\"")) {
                             // 提取 webhook_url
                             int start = json.indexOf("\"webhook_url\":\"") + 16;
@@ -305,6 +352,19 @@ public class MainActivity extends AppCompatActivity {
                             if (start > 15 && end > start) {
                                 fetchedWebhookUrl = json.substring(start, end);
                                 Log.d(TAG, "Webhook URL fetched: " + fetchedWebhookUrl);
+                            }
+
+                            // 提取 secret_key（如果返回了新的）
+                            if (json.contains("\"secret_key\":\"")) {
+                                int skStart = json.indexOf("\"secret_key\":\"") + 15;
+                                int skEnd = json.indexOf("\"", skStart);
+                                if (skStart > 14 && skEnd > skStart) {
+                                    String newSecretKey = json.substring(skStart, skEnd);
+                                    SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                                    prefs.edit().putString(SECRET_KEY_KEY, newSecretKey).apply();
+                                    secretKey = newSecretKey;
+                                    Log.d(TAG, "Secret key updated");
+                                }
                             }
                         }
                     } catch (Exception e) {
