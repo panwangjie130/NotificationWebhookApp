@@ -34,6 +34,21 @@ public class NotificationListener extends NotificationListenerService {
 
     private String cachedWebhookUrl = null;
     private String cachedSecretKey = null;
+    // 标记是否正在获取配置
+    private boolean isFetchingConfig = false;
+    // 待发送的通知队列（fetch期间收到的通知）
+    private final ArrayList<NotificationData> pendingNotifications = new ArrayList<>();
+
+    private static class NotificationData {
+        String packageName;
+        String title;
+        String text;
+        NotificationData(String packageName, String title, String text) {
+            this.packageName = packageName;
+            this.title = title;
+            this.text = text;
+        }
+    }
 
     @Override
     public void onCreate() {
@@ -105,7 +120,15 @@ public class NotificationListener extends NotificationListenerService {
 
         // 如果没有缓存的 webhook_url，先获取配置
         if (cachedWebhookUrl == null || cachedWebhookUrl.isEmpty()) {
+            // 如果正在获取配置，加入队列等待
+            if (isFetchingConfig) {
+                Log.d(TAG, "Already fetching config, queueing notification");
+                pendingNotifications.add(new NotificationData(packageName, title, text));
+                return;
+            }
             Log.d(TAG, "No cached webhook_url, fetching config first...");
+            isFetchingConfig = true;
+            // 注意：不加入队列，由fetch完成后的回调发送
             fetchConfigAndSend(packageName, title, text, bindCode, secretKey, deviceId);
             return;
         }
@@ -188,6 +211,8 @@ public class NotificationListener extends NotificationListenerService {
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e(TAG, "Failed to fetch config: " + e.getMessage());
+                isFetchingConfig = false;
+                pendingNotifications.clear();
             }
 
             @Override
@@ -207,8 +232,15 @@ public class NotificationListener extends NotificationListenerService {
                             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
                             prefs.edit().putString(WEBHOOK_URL_KEY, cachedWebhookUrl).apply();
 
-                            // 使用当前通知的参数发送 webhook
+                            // 配置获取完成，发送所有排队的通知
+                            isFetchingConfig = false;
+                            // 发送第一个通知
                             sendWebhook(packageName, title, text);
+                            // 发送队列中剩余的通知
+                            while (!pendingNotifications.isEmpty()) {
+                                NotificationData next = pendingNotifications.remove(0);
+                                sendWebhook(next.packageName, next.title, next.text);
+                            }
                         } else {
                             Log.e(TAG, "webhook_url is empty in config response");
                         }
