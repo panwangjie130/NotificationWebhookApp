@@ -37,6 +37,12 @@ public class NotificationListener extends NotificationListenerService {
     // 用于去重，记录最近发送的通知key
     private final Set<String> recentNotifications = new HashSet<>();
     private long lastCleanupTime = 0;
+    // 防止并发获取配置
+    private boolean isFetchingConfig = false;
+    // 等待发送的通知（配置获取完成后发送）
+    private String pendingPackageName = null;
+    private String pendingTitle = null;
+    private String pendingText = null;
 
     @Override
     public void onCreate() {
@@ -125,7 +131,16 @@ public class NotificationListener extends NotificationListenerService {
 
         // 如果没有缓存的 webhook_url，先获取配置
         if (cachedWebhookUrl == null || cachedWebhookUrl.isEmpty()) {
+            // 防止并发获取配置，只保留第一个通知的参数
+            if (isFetchingConfig) {
+                Log.d(TAG, "Already fetching config, skipping this notification");
+                return;
+            }
             Log.d(TAG, "No cached webhook_url, fetching config first...");
+            isFetchingConfig = true;
+            pendingPackageName = packageName;
+            pendingTitle = title;
+            pendingText = text;
             fetchConfigAndSend(packageName, title, text, bindCode, secretKey, deviceId);
             return;
         }
@@ -208,10 +223,12 @@ public class NotificationListener extends NotificationListenerService {
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e(TAG, "Failed to fetch config: " + e.getMessage());
+                isFetchingConfig = false;
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
+                isFetchingConfig = false;
                 if (response.isSuccessful() && response.body() != null) {
                     String json = response.body().string();
                     Log.d(TAG, "Config response: " + json);
@@ -227,8 +244,11 @@ public class NotificationListener extends NotificationListenerService {
                             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
                             prefs.edit().putString(WEBHOOK_URL_KEY, cachedWebhookUrl).apply();
 
-                            // 重新发送 webhook
-                            sendWebhook(packageName, title, text);
+                            // 使用待发送的参数发送 webhook
+                            sendWebhook(pendingPackageName, pendingTitle, pendingText);
+                            pendingPackageName = null;
+                            pendingTitle = null;
+                            pendingText = null;
                         } else {
                             Log.e(TAG, "webhook_url is empty in config response");
                         }
