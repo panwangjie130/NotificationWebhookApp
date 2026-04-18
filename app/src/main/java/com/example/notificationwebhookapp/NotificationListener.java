@@ -19,6 +19,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import java.io.IOException;
+import org.json.JSONObject;
 
 public class NotificationListener extends NotificationListenerService {
 
@@ -149,8 +150,12 @@ public class NotificationListener extends NotificationListenerService {
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                String respBody = response.body().string();
-                Log.d(TAG, "Webhook response: " + response.code() + " - " + respBody);
+                if (response.body() != null) {
+                    String respBody = response.body().string();
+                    Log.d(TAG, "Webhook response: " + response.code() + " - " + respBody);
+                } else {
+                    Log.d(TAG, "Webhook response: " + response.code() + " - empty body");
+                }
                 if (response.isSuccessful()) {
                     Log.d(TAG, "Webhook sent successfully");
                 } else {
@@ -187,28 +192,31 @@ public class NotificationListener extends NotificationListenerService {
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                if (response.isSuccessful()) {
+                if (response.isSuccessful() && response.body() != null) {
                     String json = response.body().string();
                     Log.d(TAG, "Config response: " + json);
 
-                    // 解析 webhook_url
-                    int start = json.indexOf("\"webhook_url\":\"") + 16;
-                    int end = json.indexOf("\"", start);
-                    if (start > 15 && end > start) {
-                        cachedWebhookUrl = json.substring(start, end);
-                        Log.d(TAG, "Got webhook_url: " + cachedWebhookUrl);
+                    try {
+                        JSONObject jsonObj = new JSONObject(json);
+                        String webhookUrl = jsonObj.optString("webhook_url");
+                        if (!webhookUrl.isEmpty()) {
+                            cachedWebhookUrl = webhookUrl;
+                            Log.d(TAG, "Got webhook_url: " + cachedWebhookUrl);
 
-                        // 保存到 SharedPreferences
-                        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-                        prefs.edit().putString(WEBHOOK_URL_KEY, cachedWebhookUrl).apply();
+                            // 保存到 SharedPreferences
+                            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                            prefs.edit().putString(WEBHOOK_URL_KEY, cachedWebhookUrl).apply();
 
-                        // 重新发送 webhook
-                        sendWebhook(packageName, title, text);
-                    } else {
-                        Log.e(TAG, "Failed to parse webhook_url from config response");
+                            // 重新发送 webhook
+                            sendWebhook(packageName, title, text);
+                        } else {
+                            Log.e(TAG, "webhook_url is empty in config response");
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to parse config response", e);
                     }
                 } else {
-                    Log.e(TAG, "Failed to fetch config: " + response.code());
+                    Log.e(TAG, "Failed to fetch config: " + (response.body() != null ? response.code() : "empty body"));
                 }
             }
         });

@@ -37,6 +37,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import java.util.Arrays;
+import org.json.JSONObject;
 
 import java.util.Set;
 import java.util.HashSet;
@@ -268,7 +269,8 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                final String respBody = response.body().string();
+                final String respBody = response.body() != null ? response.body().string() : "empty body";
+                final int code = response.code();
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -279,11 +281,11 @@ public class MainActivity extends AppCompatActivity {
                                 Toast.makeText(MainActivity.this, "⚠️ 配置无效: " + respBody, Toast.LENGTH_LONG).show();
                             }
                         } else {
-                            Toast.makeText(MainActivity.this, "❌ 服务器返回错误: " + response.code(), Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "❌ 服务器返回错误: " + code, Toast.LENGTH_SHORT).show();
                         }
                     }
                 });
-                Log.d(TAG, "Heartbeat response: " + respBody);
+                Log.d(TAG, "Heartbeat response: " + code + " - " + respBody);
             }
         });
     }
@@ -350,38 +352,32 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 isFetchingConfig = false;
-                if (response.isSuccessful()) {
+                if (response.isSuccessful() && response.body() != null) {
                     String json = response.body().string();
                     Log.d(TAG, "Config response: " + json);
                     try {
-                        // 解析 JSON 响应
-                        if (json.contains("\"status\":\"ok\"")) {
-                            // 提取 webhook_url
-                            int start = json.indexOf("\"webhook_url\":\"") + 16;
-                            int end = json.indexOf("\"", start);
-                            if (start > 15 && end > start) {
-                                fetchedWebhookUrl = json.substring(start, end);
+                        JSONObject jsonObj = new JSONObject(json);
+                        if ("ok".equals(jsonObj.optString("status"))) {
+                            String webhookUrl = jsonObj.optString("webhook_url");
+                            if (!webhookUrl.isEmpty()) {
+                                fetchedWebhookUrl = webhookUrl;
                                 Log.d(TAG, "Webhook URL fetched: " + fetchedWebhookUrl);
                             }
 
                             // 提取 secret_key（如果返回了新的）
-                            if (json.contains("\"secret_key\":\"")) {
-                                int skStart = json.indexOf("\"secret_key\":\"") + 15;
-                                int skEnd = json.indexOf("\"", skStart);
-                                if (skStart > 14 && skEnd > skStart) {
-                                    String newSecretKey = json.substring(skStart, skEnd);
-                                    SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-                                    prefs.edit().putString(SECRET_KEY_KEY, newSecretKey).apply();
-                                    secretKey = newSecretKey;
-                                    Log.d(TAG, "Secret key updated");
-                                }
+                            String newSecretKey = jsonObj.optString("secret_key");
+                            if (!newSecretKey.isEmpty()) {
+                                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                                prefs.edit().putString(SECRET_KEY_KEY, newSecretKey).apply();
+                                secretKey = newSecretKey;
+                                Log.d(TAG, "Secret key updated");
                             }
                         }
                     } catch (Exception e) {
                         Log.e(TAG, "Failed to parse config response", e);
                     }
                 } else {
-                    Log.e(TAG, "Failed to fetch config: " + response.message());
+                    Log.e(TAG, "Failed to fetch config: " + (response.body() != null ? response.message() : "empty body"));
                 }
             }
         });
