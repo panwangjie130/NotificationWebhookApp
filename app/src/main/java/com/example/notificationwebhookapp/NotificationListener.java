@@ -37,12 +37,8 @@ public class NotificationListener extends NotificationListenerService {
     // 用于去重，记录最近发送的通知key
     private final Set<String> recentNotifications = new HashSet<>();
     private long lastCleanupTime = 0;
-    // 防止并发获取配置
-    private boolean isFetchingConfig = false;
-    // 等待发送的通知（配置获取完成后发送）
-    private String pendingPackageName = null;
-    private String pendingTitle = null;
-    private String pendingText = null;
+    // 当前正在处理的通知（用于去重）
+    private String currentNotificationKey = null;
 
     @Override
     public void onCreate() {
@@ -108,7 +104,7 @@ public class NotificationListener extends NotificationListenerService {
                 Log.d(TAG, "Notification details - Title: " + title + ", Text: " + text);
 
                 // 直接发送 webhook
-                sendWebhook(packageName, title, text);
+                sendWebhook(packageName, title, text, notificationKey);
 
             } else {
                 Log.e(TAG, "Notification or extras are null for package: " + packageName);
@@ -118,7 +114,7 @@ public class NotificationListener extends NotificationListenerService {
         }
     }
 
-    private void sendWebhook(String packageName, String title, String text) {
+    private void sendWebhook(String packageName, String title, String text, String notificationKey) {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         final String bindCode = prefs.getString(BIND_CODE_KEY, "");
         final String secretKey = prefs.getString(SECRET_KEY_KEY, "");
@@ -131,17 +127,8 @@ public class NotificationListener extends NotificationListenerService {
 
         // 如果没有缓存的 webhook_url，先获取配置
         if (cachedWebhookUrl == null || cachedWebhookUrl.isEmpty()) {
-            // 防止并发获取配置，只保留第一个通知的参数
-            if (isFetchingConfig) {
-                Log.d(TAG, "Already fetching config, skipping this notification");
-                return;
-            }
             Log.d(TAG, "No cached webhook_url, fetching config first...");
-            isFetchingConfig = true;
-            pendingPackageName = packageName;
-            pendingTitle = title;
-            pendingText = text;
-            fetchConfigAndSend(packageName, title, text, bindCode, secretKey, deviceId);
+            fetchConfigAndSend(packageName, title, text, bindCode, secretKey, deviceId, notificationKey);
             return;
         }
 
@@ -209,7 +196,7 @@ public class NotificationListener extends NotificationListenerService {
                   .replace("\t", "\\t");
     }
 
-    private void fetchConfigAndSend(String packageName, String title, String text, String bindCode, String secretKey, String deviceId) {
+    private void fetchConfigAndSend(String packageName, String title, String text, String bindCode, String secretKey, String deviceId, String notificationKey) {
         OkHttpClient client = new OkHttpClient();
         MediaType JSON = MediaType.get("application/json; charset=utf-8");
         String jsonBody = "{\"bind_code\":\"" + bindCode + "\",\"device_id\":\"" + deviceId + "\"}";
@@ -223,12 +210,10 @@ public class NotificationListener extends NotificationListenerService {
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e(TAG, "Failed to fetch config: " + e.getMessage());
-                isFetchingConfig = false;
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                isFetchingConfig = false;
                 if (response.isSuccessful() && response.body() != null) {
                     String json = response.body().string();
                     Log.d(TAG, "Config response: " + json);
@@ -244,11 +229,8 @@ public class NotificationListener extends NotificationListenerService {
                             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
                             prefs.edit().putString(WEBHOOK_URL_KEY, cachedWebhookUrl).apply();
 
-                            // 使用待发送的参数发送 webhook
-                            sendWebhook(pendingPackageName, pendingTitle, pendingText);
-                            pendingPackageName = null;
-                            pendingTitle = null;
-                            pendingText = null;
+                            // 使用当前通知的参数发送 webhook
+                            sendWebhook(packageName, title, text, notificationKey);
                         } else {
                             Log.e(TAG, "webhook_url is empty in config response");
                         }
