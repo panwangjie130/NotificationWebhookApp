@@ -34,6 +34,9 @@ public class NotificationListener extends NotificationListenerService {
 
     private String cachedWebhookUrl = null;
     private String cachedSecretKey = null;
+    // 用于去重，记录最近发送的通知key
+    private final Set<String> recentNotifications = new HashSet<>();
+    private long lastCleanupTime = 0;
 
     @Override
     public void onCreate() {
@@ -51,6 +54,23 @@ public class NotificationListener extends NotificationListenerService {
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         Log.d(TAG, "Notification posted: " + sbn.getPackageName());
+
+        // 去重：使用通知的key来识别唯一通知
+        String notificationKey = sbn.getKey();
+        long currentTime = System.currentTimeMillis();
+
+        // 定期清理过期记录（每5分钟）
+        if (currentTime - lastCleanupTime > 5 * 60 * 1000) {
+            recentNotifications.clear();
+            lastCleanupTime = currentTime;
+        }
+
+        // 检查是否已经发送过这个通知
+        if (recentNotifications.contains(notificationKey)) {
+            Log.d(TAG, "Duplicate notification ignored: " + notificationKey);
+            return;
+        }
+        recentNotifications.add(notificationKey);
 
         String packageName = sbn.getPackageName();
 
