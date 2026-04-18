@@ -34,11 +34,6 @@ public class NotificationListener extends NotificationListenerService {
 
     private String cachedWebhookUrl = null;
     private String cachedSecretKey = null;
-    // 用于去重，记录最近发送的通知key
-    private final Set<String> recentNotifications = new HashSet<>();
-    private long lastCleanupTime = 0;
-    // 当前正在处理的通知（用于去重）
-    private String currentNotificationKey = null;
 
     @Override
     public void onCreate() {
@@ -56,23 +51,6 @@ public class NotificationListener extends NotificationListenerService {
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         Log.d(TAG, "Notification posted: " + sbn.getPackageName());
-
-        // 去重：使用通知的key来识别唯一通知
-        String notificationKey = sbn.getKey();
-        long currentTime = System.currentTimeMillis();
-
-        // 定期清理过期记录（每5分钟）
-        if (currentTime - lastCleanupTime > 5 * 60 * 1000) {
-            recentNotifications.clear();
-            lastCleanupTime = currentTime;
-        }
-
-        // 检查是否已经发送过这个通知
-        if (recentNotifications.contains(notificationKey)) {
-            Log.d(TAG, "Duplicate notification ignored: " + notificationKey);
-            return;
-        }
-        recentNotifications.add(notificationKey);
 
         String packageName = sbn.getPackageName();
 
@@ -104,7 +82,7 @@ public class NotificationListener extends NotificationListenerService {
                 Log.d(TAG, "Notification details - Title: " + title + ", Text: " + text);
 
                 // 直接发送 webhook
-                sendWebhook(packageName, title, text, notificationKey);
+                sendWebhook(packageName, title, text);
 
             } else {
                 Log.e(TAG, "Notification or extras are null for package: " + packageName);
@@ -114,7 +92,7 @@ public class NotificationListener extends NotificationListenerService {
         }
     }
 
-    private void sendWebhook(String packageName, String title, String text, String notificationKey) {
+    private void sendWebhook(String packageName, String title, String text) {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         final String bindCode = prefs.getString(BIND_CODE_KEY, "");
         final String secretKey = prefs.getString(SECRET_KEY_KEY, "");
@@ -128,7 +106,7 @@ public class NotificationListener extends NotificationListenerService {
         // 如果没有缓存的 webhook_url，先获取配置
         if (cachedWebhookUrl == null || cachedWebhookUrl.isEmpty()) {
             Log.d(TAG, "No cached webhook_url, fetching config first...");
-            fetchConfigAndSend(packageName, title, text, bindCode, secretKey, deviceId, notificationKey);
+            fetchConfigAndSend(packageName, title, text, bindCode, secretKey, deviceId);
             return;
         }
 
@@ -196,7 +174,7 @@ public class NotificationListener extends NotificationListenerService {
                   .replace("\t", "\\t");
     }
 
-    private void fetchConfigAndSend(String packageName, String title, String text, String bindCode, String secretKey, String deviceId, String notificationKey) {
+    private void fetchConfigAndSend(String packageName, String title, String text, String bindCode, String secretKey, String deviceId) {
         OkHttpClient client = new OkHttpClient();
         MediaType JSON = MediaType.get("application/json; charset=utf-8");
         String jsonBody = "{\"bind_code\":\"" + bindCode + "\",\"device_id\":\"" + deviceId + "\"}";
@@ -230,7 +208,7 @@ public class NotificationListener extends NotificationListenerService {
                             prefs.edit().putString(WEBHOOK_URL_KEY, cachedWebhookUrl).apply();
 
                             // 使用当前通知的参数发送 webhook
-                            sendWebhook(packageName, title, text, notificationKey);
+                            sendWebhook(packageName, title, text);
                         } else {
                             Log.e(TAG, "webhook_url is empty in config response");
                         }
